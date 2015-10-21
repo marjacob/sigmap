@@ -1,3 +1,18 @@
+# Directories
+bin/
+build/
+obj/
+
+# MacOS X
+.DS_Store
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# vim
+*.swp
+
 # Object files
 *.o
 *.ko
