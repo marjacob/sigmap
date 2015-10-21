@@ -112,9 +112,15 @@ int main(int argc, char *argv[])
 				return EXIT_FAILURE;
 			}
 
-			map_signal(sigfrom, sigto);
+			if ((rc = map_signal(sigfrom, sigto))) {
+				dump_error("sigaction", rc, errno, quiet);
+			} else if (!quiet) {
+				fprintf(stdout,
+					"mapping signal %d to %d\n", 
+					sigfrom, 
+					sigto);			
+			}
 
-			printf("mapping signal %d to %d\n", sigfrom, sigto);
 			break;
 		case 'o':
 			fprintf(stderr, "todo\n");
