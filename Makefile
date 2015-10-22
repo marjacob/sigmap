@@ -5,7 +5,7 @@ SHELL = /bin/sh
 bindir = bin
 objdir = obj
 srcdir = src
-bin = $(bindir)/sigconv
+bin = $(bindir)/sigmap
 
 CFLAGS = \
 	-c \
@@ -29,18 +29,20 @@ LDFLAGS = \
 	-Wl,-O1
 
 ALL_CFLAGS = -std=gnu99 -Isrc/include $(CFLAGS)
-ALL_LDFLAGS = $(LDFLAGS)
+ALL_LDFLAGS = -lpthread $(LDFLAGS)
 
 objects = \
+	$(objdir)/critical.o \
 	$(objdir)/main.o \
 	$(objdir)/utils.o
 
 all: $(bin)
+$(objdir)/critical: $(srcdir)/critical.c
 $(objdir)/main: $(srcdir)/main.c
 $(objdir)/utils.o: $(srcdir)/utils.c
 
 clean:
-	@$(RM) $(objdir)/*.o $(bin)
+	@$(RM) -rf "$(objdir)" "$(bindir)"
 
 debug: CFLAGS += -g -DDEBUG
 debug: all
