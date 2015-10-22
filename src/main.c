@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "critical.h"
 #include "utils.h"
 
 static int sigmap[NSIG] = { 0 };
@@ -83,10 +84,12 @@ void parse_signal_map(const char *format, int *from, int *to, int *errnum)
 
 int main(int argc, char *argv[])
 {
+	char *bin = argv[0];
 	int rc;
 	int ch;
 
 	static struct option longopts[] = {
+		{"forward", required_argument, NULL, 'f'},
 		{"help", no_argument, NULL, 'h'},
 		{"map", required_argument, NULL, 'm'},
 		{"override", required_argument, NULL, 'o'},
@@ -101,9 +104,6 @@ int main(int argc, char *argv[])
 
 	while ((ch = getopt_long(argc, argv, "hm:o:q", longopts, NULL)) != -1) {
 		switch (ch) {
-		case 'q':
-			quiet = 1;
-			break;
 		case 'm':
 			parse_signal_map(optarg, &sigfrom, &sigto, &errnum);
 
@@ -126,9 +126,12 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "todo\n");
 			return EXIT_FAILURE;
 			break;
+		case 'q':
+			quiet = 1;
+			break;
 		case 'h':
 		default:
-			usage(argv[0]);
+			usage(bin);
 			return EXIT_SUCCESS;
 		}
 	}
@@ -150,9 +153,8 @@ int main(int argc, char *argv[])
 		dump_error("fork", child, errno, quiet);
 		return EXIT_FAILURE;
 	} else if (!child) {
-		char *child_argv[] = { argv[0], "60", NULL };
 		char *child_envp[] = { NULL };
-		rc = execve(argv[0], child_argv, child_envp);
+		rc = execve(argv[0], argv, child_envp);
 		dump_error("execve", rc, errno, quiet);
 		return EXIT_FAILURE;
 	}
@@ -168,6 +170,8 @@ int main(int argc, char *argv[])
 	pid_t pid = 0;
 
 	while (0 > (pid = waitpid(child, &status, 0))) {
+		crit_block_signals();
+
 		if (pending_signal) {
 			int mapped_signal = sigmap[pending_signal - 1];
 			if (!quiet) {
@@ -182,6 +186,8 @@ int main(int argc, char *argv[])
 			kill(child, mapped_signal);
 			pending_signal = 0;
 		}
+		
+		crit_unblock_signals();
 	}
 
 	if (WIFSIGNALED(status)) {
