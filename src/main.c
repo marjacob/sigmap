@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h> /* waitpid */
+#include <sys/wait.h>  /* waitpid */
 #include <unistd.h>
 #include "critical.h"
 #include "utils.h"
@@ -176,8 +178,8 @@ int main(int argc, char *argv[])
 			int mapped_signal = sigmap[pending_signal - 1];
 			if (!quiet) {
 				fprintf(stdout,
-					"parent received signal %d\n"
-					"sending signal %d to pid %d\n",
+					"caught signal %d\n"
+					"forwarding signal %d to pid %d\n",
 					pending_signal,
 					mapped_signal,
 					child);
@@ -186,7 +188,7 @@ int main(int argc, char *argv[])
 			kill(child, mapped_signal);
 			pending_signal = 0;
 		}
-		
+
 		crit_unblock_signals();
 	}
 
