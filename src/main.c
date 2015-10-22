@@ -103,6 +103,7 @@ int main(int argc, char *argv[])
 	int sigto = 0;
 	int errnum = 0;
 	int quiet = 0;
+	int getopt_stop = 0;
 
 	while ((ch = getopt_long(argc, argv, "hm:o:q", longopts, NULL)) != -1) {
 		switch (ch) {
@@ -132,16 +133,24 @@ int main(int argc, char *argv[])
 			quiet = 1;
 			break;
 		case 'h':
-		default:
 			usage(bin);
-			return EXIT_SUCCESS;
+			break;
+		default:
+			getopt_stop = 1;
+			break;
+		}
+
+		if (getopt_stop) {
+			argc -= (optind - 1);
+			argv += (optind - 1);
+			break;
 		}
 	}
 
-	argc -= optind;
-	argv += optind;
+	//argc -= optind;
+	//argv += optind;
 
-	if (!argc) {
+	if (!argc || !getopt_stop) {
 		if (!quiet) {
 			fprintf(stderr, "error: no input files\n");
 		}
@@ -158,6 +167,12 @@ int main(int argc, char *argv[])
 		char *child_envp[] = { NULL };
 		rc = execve(argv[0], argv, child_envp);
 		dump_error("execve", rc, errno, quiet);
+
+		if (!quiet) {
+			fprintf(stderr, "argv[-1]: \"%s\"\n", argv[-1]);
+			fprintf(stderr, "argv[0]: \"%s\"\n", argv[0]);
+		}
+
 		return EXIT_FAILURE;
 	}
 
