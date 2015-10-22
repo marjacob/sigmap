@@ -164,13 +164,13 @@ int main(int argc, char *argv[])
 		dump_error("fork", child, errno, quiet);
 		return EXIT_FAILURE;
 	} else if (!child) {
-		char *child_envp[] = { NULL };
-		rc = execve(argv[0], argv, child_envp);
-		dump_error("execve", rc, errno, quiet);
+		rc = execv(argv[0], argv);
+		dump_error("execv", rc, errno, quiet);
 
 		if (!quiet) {
 			fprintf(stderr, "argv[-1]: \"%s\"\n", argv[-1]);
 			fprintf(stderr, "argv[0]: \"%s\"\n", argv[0]);
+			fprintf(stderr, "argv[1]: \"%s\"\n", argv[1]);
 		}
 
 		return EXIT_FAILURE;
