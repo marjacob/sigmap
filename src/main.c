@@ -103,9 +103,14 @@ int main(int argc, char *argv[])
 	int sigto = 0;
 	int errnum = 0;
 	int quiet = 0;
-	int getopt_stop = 0;
 
-	while ((ch = getopt_long(argc, argv, "hm:o:q", longopts, NULL)) != -1) {
+	/*
+	 * Do not remove the leading '+' sign in the opstring, as that may
+	 * permutation of the options, which will prevent the program we want
+	 * to launch from appearing last.
+	 */
+	
+	while ((ch = getopt_long(argc, argv, "+hm:o:q", longopts, NULL)) != -1) {
 		switch (ch) {
 		case 'm':
 			parse_signal_map(optarg, &sigfrom, &sigto, &errnum);
@@ -133,24 +138,16 @@ int main(int argc, char *argv[])
 			quiet = 1;
 			break;
 		case 'h':
-			usage(bin);
-			break;
 		default:
-			getopt_stop = 1;
-			break;
-		}
-
-		if (getopt_stop) {
-			argc -= (optind - 1);
-			argv += (optind - 1);
+			usage(bin);
 			break;
 		}
 	}
 
-	//argc -= optind;
-	//argv += optind;
+	argc -= optind;
+	argv += optind;
 
-	if (!argc || !getopt_stop) {
+	if (!argc) {
 		if (!quiet) {
 			fprintf(stderr, "error: no input files\n");
 		}
@@ -166,12 +163,6 @@ int main(int argc, char *argv[])
 	} else if (!child) {
 		rc = execv(argv[0], argv);
 		dump_error("execv", rc, errno, quiet);
-
-		if (!quiet) {
-			fprintf(stderr, "argv[-1]: \"%s\"\n", argv[-1]);
-			fprintf(stderr, "argv[0]: \"%s\"\n", argv[0]);
-			fprintf(stderr, "argv[1]: \"%s\"\n", argv[1]);
-		}
 
 		return EXIT_FAILURE;
 	}
