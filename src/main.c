@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h> /* waitpid */
-#include <sys/wait.h>  /* waitpid */
+#include <sys/types.h> /* waitpid [Debian] */
+#include <sys/wait.h>  /* waitpid [Debian, OSX] */
 #include <unistd.h>
 #include "critical.h"
 #include "utils.h"
