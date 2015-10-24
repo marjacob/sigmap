@@ -194,12 +194,10 @@ int main(int argc, char *argv[])
 	pid_t child = fork();
 
 	if (0 > child) {
-		m_handle_signals = 0;
 		dump_error("fork", child, errno, quiet);
 		return EXIT_FAILURE;
 	} else if (!child) {
 		rc = execv(argv[0], argv);
-		m_handle_signals = 0;
 		dump_error("execv", rc, errno, quiet);
 
 		return EXIT_FAILURE;
