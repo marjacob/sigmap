@@ -32,12 +32,10 @@ ALL_CFLAGS = -std=gnu99 -Isrc/include $(CFLAGS)
 ALL_LDFLAGS = -lpthread $(LDFLAGS)
 
 objects = \
-	$(objdir)/critical.o \
 	$(objdir)/main.o \
 	$(objdir)/utils.o
 
 all: $(bin)
-$(objdir)/critical: $(srcdir)/critical.c
 $(objdir)/main: $(srcdir)/main.c
 $(objdir)/utils.o: $(srcdir)/utils.c
 

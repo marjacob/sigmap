@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <getopt.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,20 +8,24 @@
 #include <sys/types.h> /* waitpid [Debian] */
 #include <sys/wait.h>  /* waitpid [Debian, OSX] */
 #include <unistd.h>
-#include "critical.h"
 #include "utils.h"
 
-static int sigmap[NSIG] = { 0 };
-static int pending_signal = 0;
+static int m_handle_signals = 0;
+static int m_pending_signal = 0;
+static int m_sigmap[NSIG] = { 0 };
+static sigjmp_buf m_sigenv;
 
 static void handle_signal(int signo)
 {
-	pending_signal = signo;
+	if (m_handle_signals) {
+		m_pending_signal = signo;
+		siglongjmp(m_sigenv, 1);
+	}
 }
 
 static void usage(const char *program)
 {
-	printf("%s\n", program);
+	printf("usage: %s [-hq] [-f sig] [-m sig:sig] [bin args ...]\n", program);
 	return;
 }
 
@@ -40,19 +45,19 @@ int map_signal(int from, int to)
 {
 	struct sigaction sa;
 
-	/* register the signal handler */
+	/* Register the signal handler. */
 	sa.sa_handler = &handle_signal;
 
-	/* restart interrupted system calls if possible */
+	/* Do not restart interrupted system calls. */
 	sa.sa_flags = 0 /* SA_RESTART */;
 
-	/* block every signal during the handler */
+	/* Block all other signals during the handler. */
 	sigfillset(&sa.sa_mask);
 
 	int rc = 0;
 
 	if (!(rc = sigaction(from, &sa, NULL))) {
-		sigmap[from - 1] = to;
+		m_sigmap[from - 1] = to;
 	}
 
 	return rc;
@@ -87,15 +92,25 @@ void parse_signal_map(const char *format, int *from, int *to, int *errnum)
 int main(int argc, char *argv[])
 {
 	char *bin = argv[0];
-	int rc;
 	int ch;
+	int rc;
+	pid_t my_pid = getpid();
+	sigset_t sigset_block_mask;
+	sigset_t sigset_unblock_mask;
+
+	sigemptyset(&sigset_unblock_mask);
+	sigfillset(&sigset_block_mask);
 
 	static struct option longopts[] = {
+		/* TODO: Allow passthrough of signals (same as -m 2:2). */
 		{"forward", required_argument, NULL, 'f'},
+		/* Print the help text and exit. */
 		{"help", no_argument, NULL, 'h'},
+		/* Map one signal to another. */
 		{"map", required_argument, NULL, 'm'},
-		{"override", required_argument, NULL, 'o'},
+		/* Be completely silent. */
 		{"quiet", no_argument, NULL, 'q'},
+		/* EOF. */
 		{NULL, 0, NULL, 0}
 	};
 
@@ -105,18 +120,28 @@ int main(int argc, char *argv[])
 	int quiet = 0;
 
 	/*
-	 * Do not remove the leading '+' sign in the opstring, as that may
+	 * Do not remove the leading '+' sign in the opts string, as that may
 	 * permutation of the options, which will prevent the program we want
 	 * to launch from appearing last.
 	 */
+	const char *opts = "+hm:q";
 	
-	while ((ch = getopt_long(argc, argv, "+hm:o:q", longopts, NULL)) != -1) {
+	/* Block all signals. 
+	 * They will be processed when signal handlers have been registered. */
+	sigprocmask(SIG_SETMASK, &sigset_block_mask, NULL);
+	
+	while ((ch = getopt_long(argc, argv, opts, longopts, NULL)) != -1) {
 		switch (ch) {
 		case 'm':
 			parse_signal_map(optarg, &sigfrom, &sigto, &errnum);
 
 			if (errnum) {
-				fprintf(stderr, "error: %s\n", strerror(errnum));
+				fprintf(stderr, 
+					"%s [pid: %d]: %s [errno]\n",
+					bin,
+					my_pid, 
+					strerror(errnum));
+
 				return EXIT_FAILURE;
 			}
 
@@ -124,14 +149,17 @@ int main(int argc, char *argv[])
 				dump_error("sigaction", rc, errno, quiet);
 			} else if (!quiet) {
 				fprintf(stdout,
-					"mapping signal %d to %d\n", 
+					"%s [pid: %d]: mapping signal %d to "
+					"signal %d\n", 
+					bin,
+					my_pid,
 					sigfrom, 
 					sigto);			
 			}
 
 			break;
 		case 'o':
-			fprintf(stderr, "todo\n");
+			fprintf(stderr, "TODO\n");
 			return EXIT_FAILURE;
 			break;
 		case 'q':
@@ -140,10 +168,12 @@ int main(int argc, char *argv[])
 		case 'h':
 		default:
 			usage(bin);
-			break;
+			return EXIT_SUCCESS;
 		}
 	}
 
+	/* The argument count in argc and pointers in argv are now ready to be
+	 * used when executing the child process. */
 	argc -= optind;
 	argv += optind;
 
@@ -154,6 +184,11 @@ int main(int argc, char *argv[])
 
 		return EXIT_FAILURE;
 	}
+
+	/* Unblock all signals.
+	 * This has to be done before the call to fork(2) beacause the child
+	 * process inherits the signal mask of the parent process. */
+	sigprocmask(SIG_SETMASK, &sigset_unblock_mask, NULL);
 
 	pid_t child = fork();
 
@@ -168,38 +203,76 @@ int main(int argc, char *argv[])
 	}
 
 	if (!quiet) {
+		/* Block all signals. */
+		sigprocmask(SIG_SETMASK, &sigset_block_mask, NULL);
+		
 		fprintf(stdout,
-			"parent [pid: %d] forked off [pid: %d]\n", 
-			getpid(), 
+			"%s [pid: %d]: forked off [pid: %d]\n", 
+			bin,
+			my_pid, 
 			child);
+
+		/* Unblock all signals. */
+		sigprocmask(SIG_SETMASK, &sigset_unblock_mask, NULL);
 	}
+	
+	if (!sigsetjmp(m_sigenv, 0)) {
+		/* Allow the signal handlers to jump. 
+		 * This code is only executed once. */
+		m_handle_signals = 1;
+	} else {
+		/* Signals are currently blocked by the signal handler.
+		 * The same rules regarding unsafe functions apply here. */
 
-	int status;
-	pid_t pid = 0;
+		int mapped_signal = m_sigmap[m_pending_signal - 1];
 
-	while (0 > (pid = waitpid(child, &status, 0))) {
-		crit_block_signals();
-
-		if (pending_signal) {
-			int mapped_signal = sigmap[pending_signal - 1];
-			if (!quiet) {
-				fprintf(stdout,
-					"caught signal %d\n"
-					"forwarding signal %d to pid %d\n",
-					pending_signal,
-					mapped_signal,
-					child);
-			}
-
-			kill(child, mapped_signal);
-			pending_signal = 0;
+		if (!quiet) {
+			/* This is acceptable because we are not using any
+			 * unsafe functions anywhere else at any point where
+			 * we can be interrupted by a signal. */
+			fprintf(stdout,
+				"%s [pid: %d]: caught signal %d\n"
+				"%s [pid: %d]: sending signal %d [pid: %d]\n",
+				bin,
+				my_pid,
+				m_pending_signal,
+				bin,
+				my_pid,
+				mapped_signal,
+				child);
 		}
 
-		crit_unblock_signals();
+		m_pending_signal = 0;
+
+		/* Forward the appropriate signal to the child. */
+		kill(child, mapped_signal);
 	}
 
-	if (WIFSIGNALED(status)) {
-		printf("%d terminated on signal %d\n", child, WTERMSIG(status));
+	int status = 0;
+	pid_t pid = 0;
+
+	/* Unblock all signals. */
+	sigprocmask(SIG_SETMASK, &sigset_unblock_mask, NULL);
+
+	/* Watch the child until it dies. */
+	while (0 > (pid = waitpid(child, &status, 0))) {
+		if (errno != EINTR) {
+			break;
+		}
+	}
+
+	/* Block all signals. */
+	sigprocmask(SIG_SETMASK, &sigset_block_mask, NULL);
+
+	if (!quiet && WIFSIGNALED(status)) {
+		fprintf(stdout,
+			"%s [pid: %d]: "
+			"%s [pid: %d] terminated on signal %d\n", 
+			bin,
+			my_pid,
+			argv[0],
+			child, 
+			WTERMSIG(status));
 	}
 
 	return EXIT_SUCCESS;
