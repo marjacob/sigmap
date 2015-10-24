@@ -214,7 +214,6 @@ int main(int argc, char *argv[])
 	}
 
 	int status = 0;
-	pid_t pid = 0;
 	
 	if (!sigsetjmp(m_sigenv, 0)) {
 		/* Allow the signal handlers to jump. 
