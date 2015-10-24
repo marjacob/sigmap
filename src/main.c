@@ -25,8 +25,9 @@ static void handle_signal(int signo)
 
 static void usage(const char *program)
 {
-	printf("usage: %s [-hq] [-f sig] [-m sig:sig] [bin args ...]\n", program);
-	return;
+	fprintf(stdout,
+		"usage: %s [-hq] [-f sig] [-m sig:sig] [bin args ...]\n", 
+		program);
 }
 
 void dump_error(const char *func, int rc, int errnum, int quiet)
@@ -193,10 +194,12 @@ int main(int argc, char *argv[])
 	pid_t child = fork();
 
 	if (0 > child) {
+		m_handle_signals = 0;
 		dump_error("fork", child, errno, quiet);
 		return EXIT_FAILURE;
 	} else if (!child) {
 		rc = execv(argv[0], argv);
+		m_handle_signals = 0;
 		dump_error("execv", rc, errno, quiet);
 
 		return EXIT_FAILURE;
@@ -257,7 +260,7 @@ int main(int argc, char *argv[])
 	/* Watch the child until it dies. */
 	while (0 > (pid = waitpid(child, &status, 0))) {
 		if (errno != EINTR) {
-			break;
+			return EXIT_FAILURE;
 		}
 	}
 
