@@ -120,11 +120,9 @@ int main(int argc, char *argv[])
 	int errnum = 0;
 	int quiet = 0;
 
-	/*
-	 * Do not remove the leading '+' sign in the opts string, as that may
-	 * permutation of the options, which will prevent the program we want
-	 * to launch from appearing last.
-	 */
+	/* Do not remove the leading '+' sign in the opts string, as that may
+	 * cause getopt_long to perform permutation of the options, which may 
+	 * prevent the program we want to launch from appearing last. */
 	const char *opts = "+hm:q";
 	
 	/* Block all signals. 
