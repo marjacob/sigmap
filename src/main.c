@@ -23,7 +23,7 @@ static void handle_signal(int signo)
 	}
 }
 
-static void usage(const char *program)
+static void print_usage(const char *program)
 {
 	fprintf(stdout,
 		"usage: %s [-hq] [-f sig] [-m sig:sig] [bin args ...]\n", 
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'h':
 		default:
-			usage(bin);
+			print_usage(bin);
 			return EXIT_SUCCESS;
 		}
 	}
@@ -188,7 +188,9 @@ int main(int argc, char *argv[])
 
 	/* Unblock all signals.
 	 * This has to be done before the call to fork(2) beacause the child
-	 * process inherits the signal mask of the parent process. */
+	 * process inherits the signal mask of the parent process. The signal
+	 * handler however, will not do anything until the m_handle_signals
+	 * flag evaluates to true. */
 	sigprocmask(SIG_SETMASK, &sigset_unblock_mask, NULL);
 
 	pid_t child = fork();
@@ -204,18 +206,15 @@ int main(int argc, char *argv[])
 	}
 
 	if (!quiet) {
-		/* Block all signals. */
-		sigprocmask(SIG_SETMASK, &sigset_block_mask, NULL);
-		
 		fprintf(stdout,
 			"%s [pid: %d]: forked off [pid: %d]\n", 
 			bin,
 			my_pid, 
 			child);
-
-		/* Unblock all signals. */
-		sigprocmask(SIG_SETMASK, &sigset_unblock_mask, NULL);
 	}
+
+	int status = 0;
+	pid_t pid = 0;
 	
 	if (!sigsetjmp(m_sigenv, 0)) {
 		/* Allow the signal handlers to jump. 
@@ -249,14 +248,12 @@ int main(int argc, char *argv[])
 		kill(child, mapped_signal);
 	}
 
-	int status = 0;
-	pid_t pid = 0;
-
 	/* Unblock all signals. */
 	sigprocmask(SIG_SETMASK, &sigset_unblock_mask, NULL);
 
 	/* Watch the child until it dies. */
-	while (0 > (pid = waitpid(child, &status, 0))) {
+	errno = 0;
+	while (waitpid(child, &status, 0) != child) {
 		if (errno != EINTR) {
 			return EXIT_FAILURE;
 		}
